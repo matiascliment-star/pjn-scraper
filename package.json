@@ -1,0 +1,21 @@
+{
+  "name": "mev-pjn-scraper",
+  "version": "3.0.0",
+  "description": "Scraper para MEV (Buenos Aires) y PJN/SCW (CABA) - García Climent Abogados",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "@supabase/supabase-js": "^2.39.0",
+    "playwright": "^1.40.0",
+    "cheerio": "^1.0.0-rc.12"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
