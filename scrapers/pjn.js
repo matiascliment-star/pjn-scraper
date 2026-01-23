@@ -613,7 +613,22 @@ async function navegarAExpediente(cookies, index, viewState, formAction, pageUrl
   const tieneActionTable = html.includes('action-table');
   const tieneExpediente = html.includes('Datos Generales');
   console.log(`[PJN] Tiene action-table: ${tieneActionTable}, Datos Generales: ${tieneExpediente}`);
-  
+
+  // DEBUG: Ver qué tabs tiene la página
+  const $debug = cheerio.load(html);
+  const tabs = [];
+  $debug('td[id*="expedienteTab"], div[id*="expedienteTab"] td, a[id*="expedienteTab"]').each((i, el) => {
+    const text = $debug(el).text().trim().substring(0, 30);
+    const id = $debug(el).attr('id') || '';
+    if (text && !tabs.includes(text)) tabs.push(text);
+  });
+  // También buscar por clase de tab RichFaces
+  $debug('.rf-tab-hdr-act, .rf-tab-hdr-inact, [class*="rf-tab"]').each((i, el) => {
+    const text = $debug(el).text().trim().substring(0, 30);
+    if (text && !tabs.includes(text)) tabs.push(text);
+  });
+  console.log(`[PJN] Tabs detectados: ${tabs.join(', ') || 'ninguno'}`);
+
   return { cid, html, cookies: newCookies, url: finalUrl };
 }
 
