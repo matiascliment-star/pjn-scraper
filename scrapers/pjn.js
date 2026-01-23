@@ -1202,24 +1202,37 @@ async function buscarExpedientePorNumero(cookies, numeroExpediente) {
   
   if (incidente) {
     // Si es un incidente, buscar match exacto con el /incidente
-    expediente = resultado.expedientes.find(exp => 
+    expediente = resultado.expedientes.find(exp =>
       exp.numero.includes(`${numero}/${anio}/${incidente}`)
     );
   } else {
-    // Si es principal, buscar el que NO tenga /incidente
+    // Si es principal, buscar el que NO tenga NINGÚN sufijo después del año
+    // Sufijos pueden ser: /1, /2 (números), /ES01, /ES02 (letras+números), etc.
     expediente = resultado.expedientes.find(exp => {
       const numExp = exp.numero;
-      // Matchea el número base pero NO tiene un tercer segmento después del año
-      return numExp.includes(`${numero}/${anio}`) && 
-             !(/\d+\/\d{4}\/\d+/.test(numExp));
+      // Matchea el número base pero NO tiene nada después del año (ni /número ni /letras)
+      // Regex: número/año seguido de fin de string o espacio, NO seguido de /algo
+      const regexPrincipal = new RegExp(`${numero.replace(/^0+/, '')}\\/${anio}(?![/])`, 'i');
+      const regexPrincipalPadded = new RegExp(`0*${numero}\\/${anio}(?![/])`, 'i');
+      return (regexPrincipal.test(numExp) || regexPrincipalPadded.test(numExp)) &&
+             !(/\/\d{4}\/\w+/.test(numExp)); // NO tiene /año/algo
     });
   }
   
   // Fallback: si no encontró exacto, devolver el primero que matchee
   if (!expediente) {
-    expediente = resultado.expedientes.find(exp => 
+    console.log(`[PJN] No encontró match exacto para principal, usando fallback`);
+    expediente = resultado.expedientes.find(exp =>
       exp.numero.includes(numero) && exp.numero.includes(anio)
     );
+  }
+
+  // Log para debug
+  if (expediente) {
+    console.log(`[PJN] Expediente seleccionado: "${expediente.numero}" (buscando: ${numeroExpediente})`);
+  } else {
+    console.log(`[PJN] No se encontró expediente para: ${numeroExpediente}`);
+    console.log(`[PJN] Expedientes disponibles: ${resultado.expedientes.map(e => e.numero).join(', ')}`);
   }
   
   if (!expediente) {
