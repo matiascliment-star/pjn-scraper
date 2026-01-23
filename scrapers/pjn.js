@@ -622,22 +622,24 @@ async function navegarAExpediente(cookies, index, viewState, formAction, pageUrl
 async function activarTabActuaciones(cookies, cid, viewState) {
   console.log(`[PJN] Activando tab de Actuaciones...`);
 
+  // Método 1: POST con parámetros del tab RichFaces
   const body = new URLSearchParams();
   body.append('expediente', 'expediente');
   body.append('javax.faces.ViewState', viewState);
   body.append('expediente:expedienteTab-value', 'actuaciones');
   body.append('expediente:j_idt99:j_idt100_collapsed', 'false');
+  body.append('expediente:checkBoxOtrasActuacionesId', 'on');
   body.append('javax.faces.source', 'expediente:expedienteTab');
   body.append('javax.faces.partial.event', 'tabchange');
-  body.append('javax.faces.partial.execute', 'expediente:expedienteTab');
-  body.append('javax.faces.partial.render', 'expediente:expedienteTab');
+  body.append('javax.faces.partial.execute', 'expediente:expedienteTab @component');
+  body.append('javax.faces.partial.render', 'expediente:expedienteTab @component');
   body.append('org.richfaces.ajax.component', 'expediente:expedienteTab');
   body.append('expediente:expedienteTab:newItem', 'actuaciones');
   body.append('rfExt', 'null');
   body.append('AJAX:EVENTS_COUNT', '1');
   body.append('javax.faces.partial.ajax', 'true');
 
-  const res = await fetch(`${SCW_BASE_URL}/scw/expediente.seam?cid=${cid}`, {
+  let res = await fetch(`${SCW_BASE_URL}/scw/expediente.seam?cid=${cid}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
@@ -652,19 +654,29 @@ async function activarTabActuaciones(cookies, cid, viewState) {
     redirect: 'follow'
   });
 
-  const html = await res.text();
+  let html = await res.text();
+  console.log(`[PJN] Respuesta tab AJAX: ${html.length} chars`);
 
-  // Extraer HTML del CDATA si viene en respuesta AJAX
-  const cdataMatch = html.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
-  const contentHtml = cdataMatch ? cdataMatch[1] : html;
-
-  // Extraer nuevo ViewState
+  // Extraer nuevo ViewState de la respuesta AJAX
   const newViewStateMatch = html.match(/javax\.faces\.ViewState[^>]*value="([^"]+)"/);
   const newViewState = newViewStateMatch ? newViewStateMatch[1] : viewState;
 
-  console.log(`[PJN] Tab Actuaciones activado, HTML length: ${contentHtml.length}`);
+  // Ahora hacer GET a la página completa con el nuevo estado
+  console.log(`[PJN] Obteniendo página completa después del tab switch...`);
+  res = await fetch(`${SCW_BASE_URL}/scw/expediente.seam?cid=${cid}`, {
+    headers: {
+      'Cookie': cookiesToString(cookies),
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Referer': `${SCW_BASE_URL}/scw/expediente.seam?cid=${cid}`
+    },
+    redirect: 'follow'
+  });
 
-  return { html: contentHtml, viewState: newViewState };
+  html = await res.text();
+  console.log(`[PJN] Página completa después de tab: ${html.length} chars, tiene action-table: ${html.includes('action-table')}`);
+
+  return { html, viewState: newViewState };
 }
 
 // ============ MOVIMIENTOS DE UN EXPEDIENTE ============
@@ -939,19 +951,8 @@ async function obtenerTodosLosMovimientos(cookies, cid, htmlInicial) {
     try {
       const tabResult = await activarTabActuaciones(cookies, cid, viewState);
 
-      // Hacer GET a la página completa para obtener la tabla de actuaciones
-      const res = await fetch(`${SCW_BASE_URL}/scw/expediente.seam?cid=${cid}&tab=actuaciones`, {
-        headers: {
-          'Cookie': cookiesToString(cookies),
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-        },
-        redirect: 'follow'
-      });
-      const htmlActuaciones = await res.text();
-
-      // Parsear de nuevo con el HTML del tab actuaciones
-      resultado = parsearMovimientosDeHtml(htmlActuaciones, cid);
+      // Parsear el HTML que devolvió la función (ya incluye el GET posterior)
+      resultado = parsearMovimientosDeHtml(tabResult.html, cid);
       viewState = resultado.viewState || tabResult.viewState;
 
       console.log(`[PJN] Después de activar tab: ${resultado.movimientos.length} movimientos`);
