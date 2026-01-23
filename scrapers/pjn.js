@@ -708,6 +708,15 @@ function parsearMovimientosDeHtml(html, cid = null) {
   // Parsear tabla de actuaciones
   const movimientos = [];
   
+  // DEBUG: Listar TODAS las tablas del HTML
+  console.log(`[PJN] DEBUG - Todas las tablas:`);
+  $('table').each((i, tbl) => {
+    const id = $(tbl).attr('id') || 'sin-id';
+    const clase = $(tbl).attr('class') || 'sin-clase';
+    const filasTbl = $(tbl).find('tbody tr').length;
+    console.log(`[PJN]   Tabla ${i}: id="${id.substring(0,50)}" class="${clase.substring(0,30)}" filas=${filasTbl}`);
+  });
+
   // Intentar varios selectores para la tabla
   let filas = $('table[id*="action-table"] tbody tr');
   if (filas.length === 0) {
@@ -719,6 +728,10 @@ function parsearMovimientosDeHtml(html, cid = null) {
   if (filas.length === 0) {
     // Buscar cualquier tabla dentro del tab de actuaciones
     filas = $('div[id*="actuaciones"] table tbody tr, div[id*="action"] table tbody tr');
+  }
+  if (filas.length === 0) {
+    // Buscar tabla de actuaciones por ID específico del PJN
+    filas = $('table[id*="actuacion"] tbody tr, table[id*="Actuacion"] tbody tr');
   }
   if (filas.length === 0) {
     // Último intento: buscar tabla con las columnas esperadas
