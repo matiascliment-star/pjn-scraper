@@ -929,9 +929,13 @@ async function obtenerTodosLosMovimientos(cookies, cid, htmlInicial) {
   let resultado = parsearMovimientosDeHtml(htmlInicial, cid);
   let viewState = resultado.viewState;
 
-  // Si no encontró movimientos, intentar activar el tab de Actuaciones
-  if (resultado.movimientos.length === 0 && viewState) {
-    console.log(`[PJN] No se encontraron movimientos en HTML inicial, activando tab Actuaciones...`);
+  // Verificar si el HTML tiene la tabla de actuaciones real (action-table)
+  const $ = cheerio.load(htmlInicial);
+  const tieneTablaActuaciones = $('table[id*="action-table"]').length > 0 || $('table.rf-dt').length > 0;
+
+  // Si no tiene la tabla de actuaciones O encontró pocos movimientos, activar el tab
+  if ((!tieneTablaActuaciones || resultado.movimientos.length <= 1) && viewState) {
+    console.log(`[PJN] Tabla actuaciones no encontrada (tiene=${tieneTablaActuaciones}, movs=${resultado.movimientos.length}), activando tab...`);
     try {
       const tabResult = await activarTabActuaciones(cookies, cid, viewState);
 
