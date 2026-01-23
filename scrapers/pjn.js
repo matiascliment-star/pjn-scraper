@@ -726,11 +726,22 @@ function parsearMovimientosDeHtml(html, cid = null) {
   }
   
   console.log(`[PJN] Filas encontradas: ${filas.length}`);
-  
+
+  // DEBUG: Mostrar selectores usados
+  console.log(`[PJN] DEBUG - Selector usado: table[id*="action-table"]=${$('table[id*="action-table"]').length}, table.rf-dt=${$('table.rf-dt').length}`);
+
   filas.each((i, row) => {
     const $row = $(row);
     const cells = $row.find('td');
-    
+
+    // DEBUG: Ver estructura de cada fila
+    if (i < 3 || filas.length <= 5) {
+      console.log(`[PJN] DEBUG Fila ${i}: ${cells.length} celdas`);
+      if (cells.length > 0) {
+        console.log(`[PJN] DEBUG Fila ${i} - Cell0 HTML: ${$(cells[0]).html()?.substring(0, 150)}`);
+      }
+    }
+
     if (cells.length >= 4) {
       // Buscar por IDs específicos de los spans del SCW
       
@@ -811,6 +822,11 @@ function parsearMovimientosDeHtml(html, cid = null) {
         }
       }
       
+      // DEBUG: Ver qué extrajo de esta fila
+      if (i < 3 || (!fecha && !tipo && !descripcion)) {
+        console.log(`[PJN] DEBUG Fila ${i} extraído: fecha=${fecha}, tipo=${tipo?.substring(0,30)}, desc=${descripcion?.substring(0,30)}`);
+      }
+
       if (fecha || tipo || descripcion) {
         movimientos.push({
           oficina,
@@ -821,10 +837,17 @@ function parsearMovimientosDeHtml(html, cid = null) {
           fojas,
           url_documento: linkDoc ? `${SCW_BASE_URL}${linkDoc}` : null
         });
+      } else if (cells.length >= 4) {
+        // DEBUG: Fila con celdas pero sin datos extraídos
+        console.log(`[PJN] DEBUG Fila ${i} VACÍA - Raw cell1: ${$(cells[1]).text()?.substring(0,50)}, cell2: ${$(cells[2]).text()?.substring(0,50)}`);
       }
     }
   });
-  
+
+  // DEBUG: Mostrar info del paginador
+  const paginadorLinks = $('a[class*="rf-ds"], span[class*="rf-ds"]').length;
+  console.log(`[PJN] DEBUG Paginador: ${paginadorLinks} elementos encontrados`);
+
   console.log(`[PJN] ${movimientos.length} movimientos parseados (${totalPaginas} páginas detectadas)`);
   
   return {
