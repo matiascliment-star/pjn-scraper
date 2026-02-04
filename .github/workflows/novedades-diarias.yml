@@ -14,7 +14,7 @@ jobs:
       - name: Llamar endpoint de novedades
         run: |
           curl -s -X POST \
-            "${{ secrets.SCRAPER_URL }}/pjn/novedades-diarias" \
+            "${{ secrets.SCRAPER_URL }}/pjn/importar-movimientos-masivo" \
             -H "Content-Type: application/json" \
             -d '{"usuario": "${{ secrets.PJN_USUARIO }}", "password": "${{ secrets.PJN_PASSWORD }}"}' \
             --max-time 3600
