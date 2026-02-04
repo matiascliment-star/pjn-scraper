@@ -700,7 +700,8 @@ app.post('/pjn/importar-movimientos-masivo', async (req, res) => {
     let query = supabase
       .from('expedientes')
       .select('id, numero, numero_causa, caratula')
-      .eq('jurisdiccion', 'CABA');
+      .eq('jurisdiccion', 'CABA')
+      .range(0, 4999);
     
     // Filtrar por IDs específicos si se proporciona
     if (expediente_ids && Array.isArray(expediente_ids) && expediente_ids.length > 0) {
