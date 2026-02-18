@@ -501,25 +501,37 @@ async function obtenerSiguientePaginaMovimientos(cookies, cid, viewState) {
         if (oficinaMatch) oficina = oficinaMatch[1];
       }
       
-      // FECHA
-      const fechaSpan = limpiarTextoDeScripts($(cells[2]).find('span.font-color-black').text().trim());
+      // FECHA (soporta span.font-color-black para juzgado Y span.font-negrita para Cámara)
+      let fechaSpan = limpiarTextoDeScripts($(cells[2]).find('span.font-color-black').text().trim());
+      if (!fechaSpan) {
+        fechaSpan = limpiarTextoDeScripts($(cells[2]).find('span.font-negrita').text().trim());
+      }
       let fecha = null;
       const fechaMatch = fechaSpan.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
       if (fechaMatch) {
         fecha = `${fechaMatch[3]}-${fechaMatch[2].padStart(2, '0')}-${fechaMatch[1].padStart(2, '0')}`;
       }
       
-      // TIPO - limpiar prefijos
+      // TIPO - limpiar prefijos (soporta font-color-black y font-negrita)
       let tipo = limpiarTextoDeScripts($(cells[3]).find('span.font-color-black').text().trim());
+      if (!tipo) {
+        tipo = limpiarTextoDeScripts($(cells[3]).find('span.font-negrita').text().trim());
+      }
       tipo = tipo.replace(/^Tipo\s*actuacion:\s*/i, '').trim();
       tipo = tipo.replace(/Descargar\s*Ver/gi, '').trim();
       
-      // DESCRIPCION - limpiar prefijo de oficina
+      // DESCRIPCION - limpiar prefijo de oficina (soporta font-color-black y font-negrita)
       let descripcion = limpiarTextoDeScripts($(cells[4]).find('span.font-color-black').text().trim());
+      if (!descripcion) {
+        descripcion = limpiarTextoDeScripts($(cells[4]).find('span.font-negrita').text().trim());
+      }
       descripcion = descripcion.replace(/^Oficina:\s*[A-Z0-9]+[^;]*;?\s*/i, '').trim();
       
-      // FOJAS
-      const fojas = $(cells[5]) ? limpiarTextoDeScripts($(cells[5]).find('span.font-color-black').text().trim()) : '';
+      // FOJAS (soporta font-color-black y font-negrita)
+      let fojas = $(cells[5]) ? limpiarTextoDeScripts($(cells[5]).find('span.font-color-black').text().trim()) : '';
+      if (!fojas && $(cells[5])) {
+        fojas = limpiarTextoDeScripts($(cells[5]).find('span.font-negrita').text().trim());
+      }
       
       const linkDoc = $row.find('a[href*="viewer.seam"]').first().attr('href');
       
@@ -898,16 +910,22 @@ function parsearMovimientosDeHtml(html, cid = null) {
       const linkDoc = $row.find('a[href*="viewer.seam"]').first().attr('href');
       
       // Si no encontró tipo/descripcion por ID, intentar por índice de celda
+      // Soporta span.font-color-black (juzgado) Y span.font-negrita (Cámara)
       if (!tipo && !descripcion && cells.length >= 5) {
-        // Estructura alternativa por índice
-        const cell3 = $(cells[3]).find('span.font-color-black').text().trim() || $(cells[3]).text().trim();
-        const cell4 = $(cells[4]).find('span.font-color-black').text().trim() || $(cells[4]).text().trim();
-        
+        const cell3 = $(cells[3]).find('span.font-color-black').text().trim()
+                    || $(cells[3]).find('span.font-negrita').text().trim()
+                    || $(cells[3]).text().trim();
+        const cell4 = $(cells[4]).find('span.font-color-black').text().trim()
+                    || $(cells[4]).find('span.font-negrita').text().trim()
+                    || $(cells[4]).text().trim();
+
         tipo = limpiarTextoDeScripts(cell3).replace(/^Tipo\s*actuacion:\s*/i, '').trim();
         descripcion = limpiarTextoDeScripts(cell4).replace(/^Oficina:\s*[A-Z0-9]+[^;]*;?\s*/i, '').trim();
-        
+
         if (cells.length > 5) {
-          const cell5 = $(cells[5]).find('span.font-color-black').text().trim() || $(cells[5]).text().trim();
+          const cell5 = $(cells[5]).find('span.font-color-black').text().trim()
+                      || $(cells[5]).find('span.font-negrita').text().trim()
+                      || $(cells[5]).text().trim();
           if (/^\d/.test(cell5)) fojas = cell5;
         }
       }
