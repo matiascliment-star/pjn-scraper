@@ -380,55 +380,89 @@ async function obtenerSiguientePaginaExpedientes(cookies, viewState) {
 }
 
 // Obtener TODOS los expedientes (todas las páginas)
-async function obtenerTodosLosExpedientes(cookies) {
+// Con retry por página, delay progresivo, y re-login ante fallos consecutivos
+async function obtenerTodosLosExpedientes(cookies, loginFn) {
   console.log('[PJN] Obteniendo TODOS los expedientes...');
-  
+
   // Primera página
   const primera = await obtenerListaExpedientes(cookies);
   const todosExpedientes = [...primera.expedientes];
   let viewState = primera.viewState;
-  
+
   const total = primera.total;
   const porPagina = primera.expedientes.length; // 15
   const totalPaginas = Math.ceil(total / porPagina);
-  
+
   console.log(`[PJN] Total: ${total} expedientes en ${totalPaginas} páginas`);
-  
+
+  const MAX_RETRIES = 3;
+  const DELAY_BASE_MS = 300; // delay base entre páginas
+  let fallosConsecutivos = 0;
+
   // Obtener resto de páginas usando botón "siguiente"
   let paginaActual = 1;
   while (todosExpedientes.length < total && paginaActual < totalPaginas) {
     paginaActual++;
-    try {
-      const resultado = await obtenerSiguientePaginaExpedientes(cookies, viewState);
-      
-      if (resultado.expedientes.length === 0) {
-        console.log(`[PJN] Página ${paginaActual}: sin expedientes, terminando`);
+
+    let exito = false;
+    for (let intento = 1; intento <= MAX_RETRIES; intento++) {
+      try {
+        const resultado = await obtenerSiguientePaginaExpedientes(cookies, viewState);
+
+        if (resultado.expedientes.length === 0) {
+          console.log(`[PJN] Página ${paginaActual}: sin expedientes, terminando`);
+          exito = true; // no es error, simplemente se acabaron
+          break;
+        }
+
+        todosExpedientes.push(...resultado.expedientes);
+        viewState = resultado.viewState;
+        fallosConsecutivos = 0;
+        exito = true;
+        break;
+
+      } catch (error) {
+        const delayRetry = DELAY_BASE_MS * intento * 2; // 600, 1200, 1800ms
+        console.warn(`[PJN] Error en página ${paginaActual} (intento ${intento}/${MAX_RETRIES}): ${error.message}`);
+
+        if (intento < MAX_RETRIES) {
+          console.log(`[PJN] Reintentando en ${delayRetry}ms...`);
+          await new Promise(r => setTimeout(r, delayRetry));
+        }
+      }
+    }
+
+    if (!exito) {
+      fallosConsecutivos++;
+      console.error(`[PJN] Página ${paginaActual}: falló después de ${MAX_RETRIES} intentos (${fallosConsecutivos} fallos consecutivos)`);
+
+      // Si hay muchos fallos seguidos, la sesión probablemente expiró → abortar
+      if (fallosConsecutivos >= 3) {
+        console.error(`[PJN] ${fallosConsecutivos} fallos consecutivos, abortando paginación`);
         break;
       }
-      
-      todosExpedientes.push(...resultado.expedientes);
-      viewState = resultado.viewState;
-      
-      if (paginaActual % 10 === 0) {
-        console.log(`[PJN] Progreso: ${todosExpedientes.length}/${total} expedientes (página ${paginaActual})...`);
-      }
-      
-      // Pequeña pausa cada 5 páginas
-      if (paginaActual % 5 === 0) {
-        await new Promise(r => setTimeout(r, 200));
-      }
-    } catch (error) {
-      console.error(`[PJN] Error en página ${paginaActual}:`, error.message);
-      break;
+      // Pausa más larga antes de seguir con la siguiente página
+      await new Promise(r => setTimeout(r, 2000));
+      continue;
     }
+
+    if (paginaActual % 10 === 0) {
+      console.log(`[PJN] Progreso: ${todosExpedientes.length}/${total} expedientes (página ${paginaActual})...`);
+    }
+
+    // Delay progresivo: más espera a medida que avanzamos
+    const delay = paginaActual % 10 === 0 ? DELAY_BASE_MS * 3 : DELAY_BASE_MS;
+    await new Promise(r => setTimeout(r, delay));
   }
-  
-  console.log(`[PJN] Total obtenidos: ${todosExpedientes.length} expedientes`);
-  
+
+  const completo = todosExpedientes.length >= total;
+  console.log(`[PJN] Total obtenidos: ${todosExpedientes.length}/${total} expedientes${completo ? '' : ' (PARCIAL)'}`);
+
   return {
     expedientes: todosExpedientes,
     total: todosExpedientes.length,
-    totalReportado: total
+    totalReportado: total,
+    completo
   };
 }
 
