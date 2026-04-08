@@ -1556,7 +1556,7 @@ async function fetchPjnDocumentText(cookieString, url) {
       'Accept': 'text/html,application/xhtml+xml,application/xml,application/pdf,*/*',
       'Referer': `${SCW_BASE_URL}/scw/consultaListaRelacionados.seam`
     },
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(120000),
     redirect: 'follow'
   });
 
@@ -1596,7 +1596,7 @@ async function fetchPjnDocumentText(cookieString, url) {
         'Accept': 'application/pdf,*/*',
         'Referer': fullUrl
       },
-      signal: AbortSignal.timeout(60000)
+      signal: AbortSignal.timeout(120000)
     });
 
     const buffer = Buffer.from(await pdfRes.arrayBuffer());
