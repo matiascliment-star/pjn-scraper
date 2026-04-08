@@ -905,11 +905,6 @@ app.post('/pjn/extraer-textos', async (req, res) => {
             if (texto && texto.length > 0) {
               // Sanitizar: remover null bytes y unicode inválido que Postgres rechaza
               texto = texto.replace(/\u0000/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
-              // Truncar textos enormes que causan DB timeout
-              if (texto.length > 500000) {
-                console.log(`  ⚠️ Doc ${mov.id}: truncando de ${texto.length} a 500k chars`);
-                texto = texto.substring(0, 500000) + '\n\n[... texto truncado por tamaño ...]';
-              }
               const { error: updateErr } = await supabase
                 .from('movimientos_pjn')
                 .update({ texto_documento: texto })
