@@ -13,7 +13,7 @@ const {
   loginPjn, obtenerListaExpedientes, obtenerTodosLosExpedientes,
   navegarAExpediente, obtenerMovimientosExpediente, parsearMovimientosDeHtml,
   buscarExpedientes, buscarExpedientePorNumero, scrapePjnMovimientosMasivo,
-  obtenerTodosLosMovimientos,
+  obtenerTodosLosMovimientos, fetchPjnDocumentText,
   cookiesToString: pjnCookiesToString
 } = require('./scrapers/pjn');
 
@@ -802,6 +802,140 @@ app.post('/pjn/importar-movimientos-masivo', async (req, res) => {
   } catch (error) {
     console.error('[PJN] Error:', error.message);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Extraer texto de documentos PJN y guardar en Supabase
+app.post('/pjn/extraer-textos', async (req, res) => {
+  const { usuario, password, limit } = req.body;
+
+  if (!usuario || !password) {
+    return res.status(400).json({ error: 'Usuario y password requeridos' });
+  }
+
+  try {
+    // 1. Query paginado: movimientos sin texto extraído
+    let pendientes = [];
+    const PAGE_SIZE = 1000;
+    let page = 0;
+
+    while (true) {
+      const { data, error: pageError } = await supabase
+        .from('movimientos_pjn')
+        .select('id, url_documento, expediente_id')
+        .is('texto_documento', null)
+        .not('url_documento', 'is', null)
+        .neq('url_documento', '')
+        .order('id', { ascending: false })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+      if (pageError) throw pageError;
+      if (!data || data.length === 0) break;
+      pendientes.push(...data);
+      if (data.length < PAGE_SIZE) break;
+      page++;
+      if (page > 50) break;
+    }
+
+    if (limit && Number.isInteger(limit) && limit > 0) {
+      pendientes = pendientes.slice(0, limit);
+    }
+
+    console.log(`\n[PJN-TEXTO] 📄 ${pendientes.length} documentos pendientes de extracción\n`);
+
+    if (pendientes.length === 0) {
+      return res.json({ success: true, message: 'No hay documentos pendientes', total: 0 });
+    }
+
+    // 2. Responder inmediatamente, procesar en background
+    res.json({
+      success: true,
+      message: `Procesando ${pendientes.length} documentos en background`,
+      total_pendientes: pendientes.length
+    });
+
+    // 3. Background: login + extracción
+    (async () => {
+      const startTime = Date.now();
+      let cookies = await loginPjn(usuario, password);
+      let cookieString = pjnCookiesToString(cookies);
+      let exitos = 0, errores = 0, vacios = 0;
+
+      for (let i = 0; i < pendientes.length; i++) {
+        // Re-login cada 100 documentos
+        if (i > 0 && i % 100 === 0) {
+          console.log(`[PJN-TEXTO] 🔄 Re-login (procesados ${i}/${pendientes.length})...`);
+          try {
+            cookies = await loginPjn(usuario, password);
+            cookieString = pjnCookiesToString(cookies);
+          } catch (loginErr) {
+            console.error(`[PJN-TEXTO] ❌ Re-login fallido: ${loginErr.message}`);
+            break;
+          }
+        }
+
+        const mov = pendientes[i];
+        try {
+          const texto = await fetchPjnDocumentText(cookieString, mov.url_documento);
+
+          if (texto && texto.length > 0) {
+            const { error: updateErr } = await supabase
+              .from('movimientos_pjn')
+              .update({ texto_documento: texto })
+              .eq('id', mov.id);
+
+            if (updateErr) {
+              console.error(`  ❌ Error DB ${mov.id}: ${updateErr.message}`);
+              errores++;
+            } else {
+              exitos++;
+            }
+          } else {
+            await supabase
+              .from('movimientos_pjn')
+              .update({ texto_documento: '' })
+              .eq('id', mov.id);
+            vacios++;
+          }
+        } catch (err) {
+          errores++;
+          if (err.message.includes('404') || err.message.includes('403')) {
+            await supabase
+              .from('movimientos_pjn')
+              .update({ texto_documento: '' })
+              .eq('id', mov.id);
+          }
+          if (i < 20 || i % 50 === 0) {
+            console.error(`  ❌ Doc ${mov.id}: ${err.message}`);
+          }
+        }
+
+        // Log de progreso cada 50
+        if ((i + 1) % 50 === 0) {
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+          console.log(`[PJN-TEXTO] 📊 ${i + 1}/${pendientes.length} | ✅ ${exitos} | ❌ ${errores} | ⚪ ${vacios} | ${elapsed}s`);
+        }
+
+        // Pequeño delay cada 3 documentos
+        if (i % 3 === 0 && i > 0) await new Promise(r => setTimeout(r, 300));
+      }
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`\n${'='.repeat(60)}`);
+      console.log(`[PJN-TEXTO] ✅ EXTRACCIÓN COMPLETADA`);
+      console.log(`   📄 Total: ${pendientes.length}`);
+      console.log(`   ✅ Exitosos: ${exitos}`);
+      console.log(`   ❌ Errores: ${errores}`);
+      console.log(`   ⚪ Vacíos: ${vacios}`);
+      console.log(`   ⏱️  Tiempo: ${elapsed}s`);
+      console.log(`${'='.repeat(60)}\n`);
+    })().catch(err => console.error('[PJN-TEXTO] Error fatal:', err.message));
+
+  } catch (error) {
+    console.error('[PJN-TEXTO] Error:', error.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
   }
 });
 

@@ -1514,6 +1514,90 @@ async function scrapePjnMovimientosMasivo(usuario, password, expedientesSupabase
 
 // ============ EXPORTS ============
 
+// ============ EXTRACCIÓN DE TEXTO ============
+
+async function extractTextFromPjnDocument(buffer) {
+  const snippet = buffer.toString('utf-8', 0, 500).toLowerCase();
+  const isHtml = snippet.includes('<html') || snippet.includes('<!doctype') || snippet.includes('<body');
+
+  if (isHtml) {
+    const $ = cheerio.load(buffer.toString('utf-8'));
+    $('script, style, nav, header, footer').remove();
+    return $('body').text().replace(/\s+/g, ' ').trim();
+  } else {
+    const pdfParse = require('pdf-parse');
+    const data = await pdfParse(buffer);
+    return data.text.trim();
+  }
+}
+
+async function fetchPjnDocumentText(cookieString, url) {
+  let fullUrl = url;
+  if (url.startsWith('/')) {
+    fullUrl = `${SCW_BASE_URL}${url}`;
+  } else if (!url.startsWith('http')) {
+    fullUrl = `${SCW_BASE_URL}/${url}`;
+  }
+
+  const viewerRes = await fetch(fullUrl, {
+    headers: {
+      'Cookie': cookieString,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml,application/pdf,*/*',
+      'Referer': `${SCW_BASE_URL}/scw/consultaListaRelacionados.seam`
+    },
+    signal: AbortSignal.timeout(15000),
+    redirect: 'follow'
+  });
+
+  if (!viewerRes.ok) throw new Error(`HTTP ${viewerRes.status}`);
+
+  const contentType = viewerRes.headers.get('content-type') || '';
+
+  // PDF directo
+  if (contentType.includes('pdf')) {
+    const buffer = Buffer.from(await viewerRes.arrayBuffer());
+    return extractTextFromPjnDocument(buffer);
+  }
+
+  // HTML - buscar PDF embebido
+  const html = await viewerRes.text();
+  const $ = cheerio.load(html);
+
+  let pdfUrl = $('iframe[src*=".pdf"], iframe[src*="pdf"], iframe[src*="viewer"]').attr('src')
+    || $('embed[src], object[data]').attr('src') || $('object[data]').attr('data')
+    || $('a[href*=".pdf"], a[href*="download"]').attr('href');
+
+  if (!pdfUrl) {
+    const scripts = $('script').text();
+    const match = scripts.match(/['"](https?:\/\/[^'"]*\.pdf[^'"]*)['"]/i)
+      || scripts.match(/['"](\/[^'"]*\.pdf[^'"]*)['"]/i);
+    if (match) pdfUrl = match[1];
+  }
+
+  if (pdfUrl) {
+    if (pdfUrl.startsWith('/')) pdfUrl = `${SCW_BASE_URL}${pdfUrl}`;
+    else if (!pdfUrl.startsWith('http')) pdfUrl = new URL(pdfUrl, fullUrl).href;
+
+    const pdfRes = await fetch(pdfUrl, {
+      headers: {
+        'Cookie': cookieString,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/pdf,*/*',
+        'Referer': fullUrl
+      },
+      signal: AbortSignal.timeout(15000)
+    });
+
+    const buffer = Buffer.from(await pdfRes.arrayBuffer());
+    return extractTextFromPjnDocument(buffer);
+  }
+
+  // No hay PDF, extraer texto del HTML
+  $('script, style, nav, header, footer').remove();
+  return $('body').text().replace(/\s+/g, ' ').trim();
+}
+
 module.exports = {
   loginPjn,
   cookiesToString,
@@ -1529,5 +1613,6 @@ module.exports = {
   parsearMovimientosDeHtml,
   buscarExpedientes,
   buscarExpedientePorNumero,
-  scrapePjnMovimientosMasivo
+  scrapePjnMovimientosMasivo,
+  fetchPjnDocumentText
 };
