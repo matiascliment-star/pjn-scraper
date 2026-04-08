@@ -847,7 +847,7 @@ app.post('/pjn/extraer-textos', async (req, res) => {
       pendientes.push(...data);
       if (data.length < PAGE_SIZE) break;
       page++;
-      if (page > 50) break;
+      if (page > 200) break;
     }
 
     if (limit && Number.isInteger(limit) && limit > 0) {
