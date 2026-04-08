@@ -901,8 +901,10 @@ app.post('/pjn/extraer-textos', async (req, res) => {
         const batch = pendientes.slice(i, i + BATCH_SIZE);
         const results = await Promise.allSettled(batch.map(async (mov) => {
           try {
-            const texto = await fetchPjnDocumentText(cookieString, mov.url_documento);
+            let texto = await fetchPjnDocumentText(cookieString, mov.url_documento);
             if (texto && texto.length > 0) {
+              // Sanitizar: remover null bytes y unicode inválido que Postgres rechaza
+              texto = texto.replace(/\u0000/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
               const { error: updateErr } = await supabase
                 .from('movimientos_pjn')
                 .update({ texto_documento: texto })
