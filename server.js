@@ -861,9 +861,10 @@ app.post('/pjn/extraer-textos', async (req, res) => {
       let cookieString = pjnCookiesToString(cookies);
       let exitos = 0, errores = 0, vacios = 0;
 
-      for (let i = 0; i < pendientes.length; i++) {
-        // Re-login cada 100 documentos
-        if (i > 0 && i % 100 === 0) {
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < pendientes.length; i += BATCH_SIZE) {
+        // Re-login cada 200 documentos
+        if (i > 0 && i % 200 === 0) {
           console.log(`[PJN-TEXTO] 🔄 Re-login (procesados ${i}/${pendientes.length})...`);
           try {
             cookies = await loginPjn(usuario, password);
@@ -874,50 +875,44 @@ app.post('/pjn/extraer-textos', async (req, res) => {
           }
         }
 
-        const mov = pendientes[i];
-        try {
-          const texto = await fetchPjnDocumentText(cookieString, mov.url_documento);
-
-          if (texto && texto.length > 0) {
-            const { error: updateErr } = await supabase
-              .from('movimientos_pjn')
-              .update({ texto_documento: texto })
-              .eq('id', mov.id);
-
-            if (updateErr) {
-              console.error(`  ❌ Error DB ${mov.id}: ${updateErr.message}`);
-              errores++;
+        const batch = pendientes.slice(i, i + BATCH_SIZE);
+        const results = await Promise.allSettled(batch.map(async (mov) => {
+          try {
+            const texto = await fetchPjnDocumentText(cookieString, mov.url_documento);
+            if (texto && texto.length > 0) {
+              const { error: updateErr } = await supabase
+                .from('movimientos_pjn')
+                .update({ texto_documento: texto })
+                .eq('id', mov.id);
+              if (updateErr) throw new Error(`DB: ${updateErr.message}`);
+              return 'ok';
             } else {
-              exitos++;
+              await supabase.from('movimientos_pjn').update({ texto_documento: '' }).eq('id', mov.id);
+              return 'vacio';
             }
-          } else {
-            await supabase
-              .from('movimientos_pjn')
-              .update({ texto_documento: '' })
-              .eq('id', mov.id);
-            vacios++;
+          } catch (err) {
+            if (err.message.includes('404') || err.message.includes('403')) {
+              await supabase.from('movimientos_pjn').update({ texto_documento: '' }).eq('id', mov.id);
+            }
+            throw err;
           }
-        } catch (err) {
-          errores++;
-          if (err.message.includes('404') || err.message.includes('403')) {
-            await supabase
-              .from('movimientos_pjn')
-              .update({ texto_documento: '' })
-              .eq('id', mov.id);
-          }
-          if (i < 20 || i % 50 === 0) {
-            console.error(`  ❌ Doc ${mov.id}: ${err.message}`);
-          }
+        }));
+
+        for (const r of results) {
+          if (r.status === 'fulfilled' && r.value === 'ok') exitos++;
+          else if (r.status === 'fulfilled' && r.value === 'vacio') vacios++;
+          else errores++;
         }
 
         // Log de progreso cada 50
-        if ((i + 1) % 50 === 0) {
+        const procesados = Math.min(i + BATCH_SIZE, pendientes.length);
+        if (procesados % 50 < BATCH_SIZE) {
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-          console.log(`[PJN-TEXTO] 📊 ${i + 1}/${pendientes.length} | ✅ ${exitos} | ❌ ${errores} | ⚪ ${vacios} | ${elapsed}s`);
+          console.log(`[PJN-TEXTO] 📊 ${procesados}/${pendientes.length} | ✅ ${exitos} | ❌ ${errores} | ⚪ ${vacios} | ${elapsed}s`);
         }
 
-        // Pequeño delay cada 3 documentos
-        if (i % 3 === 0 && i > 0) await new Promise(r => setTimeout(r, 300));
+        // Pequeño delay entre batches
+        await new Promise(r => setTimeout(r, 100));
       }
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
