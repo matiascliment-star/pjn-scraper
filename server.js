@@ -914,6 +914,7 @@ app.post('/pjn/extraer-textos', async (req, res) => {
               return 'vacio';
             }
           } catch (err) {
+            console.error(`  ❌ Doc ${mov.id}: ${err.message}`);
             if (err.message.includes('404') || err.message.includes('403')) {
               await supabase.from('movimientos_pjn').update({ texto_documento: '' }).eq('id', mov.id);
             }
