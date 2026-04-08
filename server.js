@@ -3,6 +3,19 @@ const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 
+// Prevenir crash por PDFs corruptos en pdf-parse
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT]', err.message);
+  if (err.stack?.includes('pdf-parse') || err.stack?.includes('pdf.worker')) {
+    console.error('[UNCAUGHT] Error de pdf-parse ignorado, continuando...');
+  } else {
+    console.error('[UNCAUGHT] Error fatal, stack:', err.stack);
+  }
+});
+process.on('unhandledRejection', (err) => {
+  console.error('[UNHANDLED]', err?.message || err);
+});
+
 // Scrapers
 const { 
   scrapeMevCausas, scrapeMevMovimientos, scrapeMevMovimientosMasivo, 

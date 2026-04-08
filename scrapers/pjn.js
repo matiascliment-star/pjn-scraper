@@ -1525,9 +1525,19 @@ async function extractTextFromPjnDocument(buffer) {
     $('script, style, nav, header, footer').remove();
     return $('body').text().replace(/\s+/g, ' ').trim();
   } else {
+    // pdf-parse puede crashear con PDFs corruptos - proteger con Promise race + catch
     const pdfParse = require('pdf-parse');
-    const data = await pdfParse(buffer);
-    return data.text.trim();
+    try {
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('PDF parse timeout')), 30000));
+      const parse = pdfParse(buffer);
+      const data = await Promise.race([parse, timeout]);
+      return data.text.trim();
+    } catch (err) {
+      console.error(`[PJN-TEXTO] ⚠️ pdf-parse falló: ${err.message}, extrayendo como texto plano`);
+      // Fallback: intentar extraer texto plano del buffer
+      const raw = buffer.toString('utf-8').replace(/[^\x20-\x7E\xC0-\xFF\n]/g, ' ').replace(/\s+/g, ' ').trim();
+      return raw.length > 100 ? raw : '';
+    }
   }
 }
 
