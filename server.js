@@ -878,13 +878,23 @@ app.post('/pjn/extraer-textos', async (req, res) => {
       for (let i = 0; i < pendientes.length; i += BATCH_SIZE) {
         // Re-login cada 200 documentos
         if (i > 0 && i % 200 === 0) {
-          console.log(`[PJN-TEXTO] 🔄 Re-login (procesados ${i}/${pendientes.length})...`);
-          try {
-            cookies = await loginPjn(usuario, password);
-            cookieString = pjnCookiesToString(cookies);
-          } catch (loginErr) {
-            console.error(`[PJN-TEXTO] ❌ Re-login fallido: ${loginErr.message}`);
-            break;
+          for (let retry = 0; retry < 5; retry++) {
+            try {
+              console.log(`[PJN-TEXTO] 🔄 Re-login (procesados ${i}/${pendientes.length})${retry > 0 ? ` intento ${retry + 1}` : ''}...`);
+              cookies = await loginPjn(usuario, password);
+              cookieString = pjnCookiesToString(cookies);
+              break;
+            } catch (loginErr) {
+              console.error(`[PJN-TEXTO] ❌ Re-login fallido: ${loginErr.message}`);
+              if (retry < 4) {
+                const wait = (retry + 1) * 10000;
+                console.log(`[PJN-TEXTO] ⏳ Esperando ${wait / 1000}s antes de reintentar...`);
+                await new Promise(r => setTimeout(r, wait));
+              } else {
+                console.error(`[PJN-TEXTO] ❌ 5 intentos fallidos, abortando`);
+                i = pendientes.length;
+              }
+            }
           }
         }
 
